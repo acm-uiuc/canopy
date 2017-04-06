@@ -1,0 +1,6 @@
+[package]
+name = "canopy"
+version = "0.1.0"
+authors = ["Naren <naren@narendasan.com>"]
+
+[dependencies]
