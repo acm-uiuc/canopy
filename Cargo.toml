@@ -1,6 +1,10 @@
 [package]
 name = "canopy"
 version = "0.1.0"
-authors = ["Naren <naren@narendasan.com>"]
+authors = ["Groot Developer Team <groot-l@acm.illinois.edu>"]
 
 [dependencies]
+iron = "*"
+router = "*"
+hyper = "*"
+rustc-serialize = "*"
