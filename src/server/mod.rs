@@ -1,4 +1,3 @@
-//
 // Copyright © 2017, ACM@UIUC
 //
 // This file is part of the Groot Project.  
@@ -7,8 +6,5 @@
 // University of Illinois/NCSA Open Source License. You should have
 // received a copy of this license in a file with the distribution.
 
-mod canopy;
 
-fn main() {
-    canopy::canopy_server();
-}
+mod canopy;

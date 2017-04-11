@@ -24,7 +24,7 @@ impl Router {
         Router { routes: HashMap::new() }
     }
 
-    pub fn add_route<H>(&mut self, path: String, handler: H) where H: Handler {
+    pub fn AddRoute<H>(&mut self, path: String, handler: H) where H: Handler {
         self.routes.insert(path, Box::new(handler));
     }
 }
