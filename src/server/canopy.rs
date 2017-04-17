@@ -13,7 +13,7 @@ use iron::prelude::*;
 use iron::{Handler};
 use iron::status;
 
-mod router;
+use router;
 
 fn canopy_server() {
     let mut router = router::Router::new();
