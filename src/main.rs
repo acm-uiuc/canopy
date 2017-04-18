@@ -10,5 +10,5 @@
 mod server;
 
 fn main() {
-    server::canopy_server();
+    server::canopy::canopy_server();
 }
