@@ -1,0 +1,14 @@
+# Central configuration file for Canopy client instances
+
+# ipv4 address of parent node
+host: "0.0.0.0"
+port: 50007
+
+# reporting settings, in seconds
+timeout: 1 
+
+# prints connections to stdout
+silent: false
+
+# whether this client is a leaf node
+is_leaf: true 
