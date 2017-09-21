@@ -21,7 +21,7 @@ class Daemon:
 
         os.chdir("/")
         os.setsid()
-        os.unmask(0)
+        os.umask(0)
 
         try:
             pid = os.fork()
@@ -45,55 +45,55 @@ class Daemon:
         pid = str(os.getpid())
         file(self.pidfile, 'w+').write("%s\n" % pid)
 
-        def delpid(self):
-            os.remove(self.pidfile)
+    def delpid(self):
+        os.remove(self.pidfile)
 
-        def start(self):
-            try:
-                pf = file(self.pidfile, 'r')
-                pid = int(pf.read().strip())
-                pf.close()
-            except IOError:
-                pid = None
+    def start(self):
+        try:
+            pf = file(self.pidfile, 'r')
+            pid = int(pf.read().strip())
+            pf.close()
+        except IOError:
+            pid = None
 
-            if pid:
-                message = "PID File %s already exists. Daemon might be already running?\n"
-                sys.stderr.write(message % self.pidfile)
+        if pid:
+            message = "PID File %s already exists. Daemon might be already running?\n"
+            sys.stderr.write(message % self.pidfile)
+            sys.exit(1)
+
+        self.daemonize()
+        self.run()
+
+    def stop(self):
+        try:
+            pf = file(self.pidfile, 'r')
+            pid = int(pf.read().strip())
+            pf.close()
+        except IOError:
+            pid = None
+
+        if not pid:
+            message = "PID File %s does not exist. Daemon might not be running?\n"
+            sys.stderr.write(message % self.pidfile)
+            return
+
+        try:
+            while 1:
+                os.kill(pid, SIGTERM)
+                time.sleep(0.1)
+        except OSError, err:
+            err = str(err)
+            if err.find("No such process") > 0:
+                if os.path.exists(self.pidfile):
+                    os.remove(self.pidfile)
+            else:
+                print str(err)
                 sys.exit(1)
 
-            self.daemonize()
-            self.run()
+    def restart(self):
+        self.stop()
+        self.start()
 
-        def stop(self):
-            try:
-                pf = file(self.pidfile, 'r')
-                pid = int(pf.read().strip())
-                pf.close()
-            except IOError:
-                pid = None
-
-            if not pid:
-                message = "PID File %s does not exist. Daemon might not be running?\n"
-                sys.stderr.write(message % self.pidfile)
-                return
-
-            try:
-                while 1:
-                    os.kill(pid, SIGTERM)
-                    time.sleep(0.1)
-            except OSError, err:
-                err = str(err)
-                if err.find("No such process") > 0:
-                    if os.path.exists(self.pidfile):
-                        os.remove(self.pidfile)
-                else:
-                    print str(err)
-                    sys.exit(1)
-
-        def restart(self):
-            self.stop()
-            self.start()
-
-        def run(self):
-            pass
+    def run(self):
+        pass
 
