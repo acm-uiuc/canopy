@@ -1,0 +1,11 @@
+# Central configuration file for main Canopy server instance
+
+# ipv4 address of server socket
+host: "0.0.0.0"
+port: 50007
+
+# maximum time between heartbeats
+timeout: 5
+
+# prints connections to stdout
+silent: false
