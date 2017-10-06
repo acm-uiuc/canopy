@@ -1,10 +1,15 @@
 #!/usr/bin/env python
 
-import sys, os, time, atexit
+import sys
+import os
+import time
+import atexit
 from signal import SIGTERM
 
+
 class Daemon:
-    def __init__(self, pidfile, stdin='/dev/null', stdout='/dev/null', stderr='/dev/null'):
+    def __init__(self, pidfile, stdin='/dev/null', stdout='/dev/null',
+                 stderr='/dev/null'):
         self.stdin = stdin
         self.stdout = stdout
         self.stderr = stderr
@@ -44,6 +49,7 @@ class Daemon:
         atexit.register(self.delpid)
         pid = str(os.getpid())
         file(self.pidfile, 'w+').write("%s\n" % pid)
+        sys.stderr.write("wrote to pidfile\n")
 
     def delpid(self):
         os.remove(self.pidfile)
@@ -96,4 +102,3 @@ class Daemon:
 
     def run(self):
         pass
-

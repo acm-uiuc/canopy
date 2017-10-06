@@ -1,38 +1,37 @@
 import SocketServer
 import config_loader
 import threading
+import sys
+import daemon
 
-"""The name of the YAML file from which to get configurations""" 
+"""The name of the YAML file from which to get configurations"""
 SERVER_CONFIG_FILE_NAME = "server-config.yml"
 
 """Set of all live connections"""
 connections = set()
 
-class CanopyServer():
+
+class CanopyServer(daemon.Daemon):
     """TCP socket-based server for Canopy"""
 
-    def __init__(self):
-        """Creates a Canopy server based on configurations in server-config.yml"""
+    def __init__(self, pidfile):
+        """Creates a Canopy server based on server-config.yml file"""
+        daemon.Daemon.__init__(self, pidfile, stderr='/tmp/canopyserver.log')
         self.addr = (config["host"], config["port"])
-        self.s = SocketServer.ThreadingTCPServer(self.addr, CanopyTCPHandler)
-        self.s_thread = threading.Thread(target=self.s.serve_forever)
 
     def run(self):
         """Begin listening asynchronously for canopy clients"""
+        self.s = SocketServer.ThreadingTCPServer(self.addr, CanopyTCPHandler)
+        self.s_thread = threading.Thread(target=self.s.serve_forever)
         self.s_thread.start()
         cprint("canopy server listening at (%s, %d)" % self.addr)
 
-    def stop(self):
-        """Stop listening asynchronously for canopy clients"""
-        cprint("Shutting down canopy server")
-        self.s.shutdown()
 
- 
 class CanopyTCPHandler(SocketServer.StreamRequestHandler):
     """Handle connections and maintain set of live clients"""
 
     def handle(self):
-        print("\033[92mnew connection: (%s, %d)\033[0m" % self.client_address)
+        cprint("\033[92mnew connection: (%s, %d)\033[0m" % self.client_address)
         connections.add(self.client_address)
         self.request.settimeout(config["timeout"])
         while True:
@@ -44,13 +43,27 @@ class CanopyTCPHandler(SocketServer.StreamRequestHandler):
         cprint("\033[93mend connection: (%s, %d)\033[0m" % self.client_address)
         connections.remove(self.client_address)
 
-"""Custom wrapper to print depending on config silent setting"""
+
 def cprint(message):
-    if not config["silent"]: print(message)
+    """Custom wrapper to print depending on config silent setting"""
+
+    if not config["silent"]:
+        sys.stderr.write(message+"\n")
+
 
 if __name__ == "__main__":
     config = config_loader.load(SERVER_CONFIG_FILE_NAME)
-    canopy_server = CanopyServer()
-    canopy_server.run()
-    if raw_input() == "stop":
-        canopy_server.stop()
+    daemon = CanopyServer('/tmp/canopyserver-daemon.pid')
+    if len(sys.argv) == 2:
+        if 'start' == sys.argv[1]:
+            daemon.start()
+        elif 'stop' == sys.argv[1]:
+            daemon.stop()
+        elif 'restart' == sys.argv[1]:
+            daemon.restart()
+        else:
+            print("Unknown command")
+            sys.exit(2)
+        sys.exit(0)
+    print("Usage: %s start|stop|restart" % sys.argv[0])
+    sys.exit(2)
