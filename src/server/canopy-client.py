@@ -1,3 +1,4 @@
+import SocketServer
 import socket
 import time
 import sys
@@ -8,6 +9,9 @@ import daemon
 """The name of the YAML file from which to get configurations"""
 CLIENT_CONFIG_FILE_NAME = "client-config.yml"
 
+"""Set of all live connections"""
+connections = {}
+
 
 class CanopyClient(daemon.Daemon):
     """TCP socket-based client for Canopy"""
@@ -15,15 +19,41 @@ class CanopyClient(daemon.Daemon):
     def __init__(self, pidfile):
         """Creates a Canopy client based on client-config.yml file"""
         daemon.Daemon.__init__(self, pidfile, stderr='/tmp/canopyclient.log')
-        self.addr = (config["host"], config["port"])
+        self.parent_addr = (config["parent_host"], config["parent_port"])
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.hb_thread = threading.Thread(target=heartbeat, args=(self.s,))
 
+
     def run(self):
         """Begin sending messages to canopy server and launch threads"""
-        self.s.connect(self.addr)
+        self.s.connect(self.parent_addr)
         self.hb_thread.start()
-        cprint("canopy client connected to (%s, %d)" % self.addr)
+        cprint("\033[92mcanopy client connected to (%s, %d)" % self.parent_addr)
+        if not config["is_leaf"]:
+            self.addr = (config["host"], config["port"])
+            self.ss = SocketServer.ThreadingTCPServer(self.addr, CanopyTCPHandler)
+            self.s_thread = threading.Thread(target=self.ss.serve_forever)
+            self.s_thread.start()
+            cprint("canopy server listening at (%s, %d)" % self.addr)
+
+
+class CanopyTCPHandler(SocketServer.StreamRequestHandler):
+    """Handle connections and maintain set of live clients"""
+
+    def handle(self):
+        cprint("\033[92mnew connection: (%s, %d)\033[0m" % self.client_address)
+        self.request.settimeout(config["timeout"])
+        while True:
+            # self.request is the TCP socket connected to the client
+            self.data = self.request.recv(1024).strip()
+            # request terminated or timed out
+            if self.data == "":
+                break
+            connections[self.client_address] = self.data.split(' ')
+        cprint("\033[93mend connection: (%s, %d)\033[0m" % self.client_address)
+        
+        # remove client from live connections
+        del connections[self.client_address]
 
 
 def heartbeat(socket):
@@ -31,10 +61,31 @@ def heartbeat(socket):
 
     try:
         while True:
-            socket.sendall("heartbeat")
-            time.sleep(config["timeout"])
+            if not config["is_leaf"] and len(connections) > 0:
+                socket.sendall(config["app_name"] + " " 
+                               + " ".join(connections.values()))
+            else:
+                socket.sendall(config["app_name"])
+            time.sleep(config["hb_interval"])
     except:
-        pass
+        cprint("\033[93mcanopy client detached from server.\033[93m")
+
+
+class CanopyTCPHandler(SocketServer.StreamRequestHandler):
+    """Handle connections and maintain set of live clients"""
+
+    def handle(self):
+        cprint("\033[92mnew connection: (%s, %d)\033[0m" % self.client_address)
+        connections.add(self.client_address)
+        self.request.settimeout(config["timeout"])
+        while True:
+            # self.request is the TCP socket connected to the client
+            self.data = self.request.recv(1024).strip()
+            # request terminated or timed out
+            if self.data == "":
+                break
+        cprint("\033[93mend connection: (%s, %d)\033[0m" % self.client_address)
+        connections.remove(self.client_address)
 
 
 def cprint(message):

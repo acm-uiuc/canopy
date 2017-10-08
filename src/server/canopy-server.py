@@ -8,7 +8,7 @@ import daemon
 SERVER_CONFIG_FILE_NAME = "server-config.yml"
 
 """Set of all live connections"""
-connections = set()
+connections = {}
 
 
 class CanopyServer(daemon.Daemon):
@@ -32,7 +32,6 @@ class CanopyTCPHandler(SocketServer.StreamRequestHandler):
 
     def handle(self):
         cprint("\033[92mnew connection: (%s, %d)\033[0m" % self.client_address)
-        connections.add(self.client_address)
         self.request.settimeout(config["timeout"])
         while True:
             # self.request is the TCP socket connected to the client
@@ -40,8 +39,11 @@ class CanopyTCPHandler(SocketServer.StreamRequestHandler):
             # request terminated or timed out
             if self.data == "":
                 break
+            connections[self.client_address] = self.data.split(' ')
         cprint("\033[93mend connection: (%s, %d)\033[0m" % self.client_address)
-        connections.remove(self.client_address)
+        
+        # remove client from live connections
+        del connections[self.client_address]
 
 
 def cprint(message):
