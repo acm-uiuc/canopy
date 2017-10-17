@@ -5,12 +5,17 @@ import sys
 import config_loader
 import threading
 import daemon
+import subprocess as sp
+from collections import deque
 
 """The name of the YAML file from which to get configurations"""
 CLIENT_CONFIG_FILE_NAME = "client-config.yml"
 
 """Set of all live connections"""
 connections = {}
+
+"""Buffer of most recent output from target process"""
+target_buffer = deque() 
 
 
 class CanopyClient(daemon.Daemon):
@@ -29,12 +34,25 @@ class CanopyClient(daemon.Daemon):
         self.s.connect(self.parent_addr)
         self.hb_thread.start()
         cprint("\033[92mcanopy client connected to (%s, %d)" % self.parent_addr)
+
+        # launch tcp server if relay node
         if not config["is_leaf"]:
             self.addr = (config["host"], config["port"])
             self.ss = SocketServer.ThreadingTCPServer(self.addr, CanopyTCPHandler)
             self.s_thread = threading.Thread(target=self.ss.serve_forever)
             self.s_thread.start()
             cprint("canopy server listening at (%s, %d)" % self.addr)
+
+        # launch target process if leaf node
+        if config["target"] is not None:
+            target_command = config["target"].split(" ")
+            proc = sp.Popen(target_command, shell=True, 
+                            stdout=sp.PIPE, stderr=sp.PIPE)
+            while proc.poll() is None:
+                output = proc.stdout.readline()
+                if len(target_buffer) >= config["bufsize"]:
+                    target_buffer.popleft()
+                target_buffer.append(output)
 
 
 class CanopyTCPHandler(SocketServer.StreamRequestHandler):
@@ -69,23 +87,6 @@ def heartbeat(socket):
             time.sleep(config["hb_interval"])
     except:
         cprint("\033[93mcanopy client detached from server.\033[93m")
-
-
-class CanopyTCPHandler(SocketServer.StreamRequestHandler):
-    """Handle connections and maintain set of live clients"""
-
-    def handle(self):
-        cprint("\033[92mnew connection: (%s, %d)\033[0m" % self.client_address)
-        connections.add(self.client_address)
-        self.request.settimeout(config["timeout"])
-        while True:
-            # self.request is the TCP socket connected to the client
-            self.data = self.request.recv(1024).strip()
-            # request terminated or timed out
-            if self.data == "":
-                break
-        cprint("\033[93mend connection: (%s, %d)\033[0m" % self.client_address)
-        connections.remove(self.client_address)
 
 
 def cprint(message):

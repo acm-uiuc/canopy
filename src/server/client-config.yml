@@ -28,4 +28,7 @@ is_leaf: true
 
 # process to be launched and monitored by this node
 # set this value to NULL if this is a relay node
-target: "dummy-app-name"
+target: "./canopy_test"
+
+# size of target process stdout and stderr output buffer
+bufsize: 10
