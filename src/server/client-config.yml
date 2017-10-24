@@ -5,7 +5,6 @@ parent_host: "0.0.0.0"
 parent_port: 50007
 
 # ipv4 address of tcp server
-# used only when is_leaf is false
 host: "0.0.0.0"
 port: 50010
 

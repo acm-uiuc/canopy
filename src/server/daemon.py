@@ -20,8 +20,9 @@ class Daemon:
             pid = os.fork()
             if pid > 0:
                 sys.exit(0)
-        except OSError, e:
-            sys.stderr.write("Fork 1 failed!\n%d (%s)\n" % (e.errno, e.strerror))
+        except OSError:
+            e = sys.exc_info()
+            sys.stderr.write("Fork 1 failed!\n%s (%s)\n" % (e[0], e[1]))
             sys.exit(1)
 
         os.chdir("/")
@@ -32,15 +33,16 @@ class Daemon:
             pid = os.fork()
             if pid > 0:
                 sys.exit(0)
-        except OSError, e:
-            sys.stderr.write("Fork 2 failed!\n%d (%s)\n" % (e.errno, e.strerror))
+        except OSError:
+            e = sys.exc_info()
+            sys.stderr.write("Fork 2 failed!\n%s (%s)\n" % (e[0], e[1]))
             sys.exit(1)
 
         sys.stdout.flush()
         sys.stderr.flush()
-        si = file(self.stdin, 'r')
-        so = file(self.stdout, 'a+')
-        se = file(self.stderr, 'a+', 0)
+        si = open(self.stdin, 'r')
+        so = open(self.stdout, 'a+')
+        se = open(self.stderr, 'a+')
 
         os.dup2(si.fileno(), sys.stdin.fileno())
         os.dup2(so.fileno(), sys.stdout.fileno())
@@ -48,7 +50,9 @@ class Daemon:
 
         atexit.register(self.delpid)
         pid = str(os.getpid())
-        file(self.pidfile, 'w+').write("%s\n" % pid)
+        with open(self.pidfile, 'w+') as pidfile:
+            pidfile.write("%s\n" % pid)
+            sys.stderr.write("pidfile configured to %s\n" % self.pidfile)
         sys.stderr.write("wrote to pidfile\n")
 
     def delpid(self):
@@ -56,7 +60,7 @@ class Daemon:
 
     def start(self):
         try:
-            pf = file(self.pidfile, 'r')
+            pf = open(self.pidfile, 'r')
             pid = int(pf.read().strip())
             pf.close()
         except IOError:
@@ -72,7 +76,7 @@ class Daemon:
 
     def stop(self):
         try:
-            pf = file(self.pidfile, 'r')
+            pf = open(self.pidfile, 'r')
             pid = int(pf.read().strip())
             pf.close()
         except IOError:
@@ -87,13 +91,13 @@ class Daemon:
             while 1:
                 os.kill(pid, SIGTERM)
                 time.sleep(0.1)
-        except OSError, err:
-            err = str(err)
+        except OSError:
+            err = str(sys.exc_info()[1])
             if err.find("No such process") > 0:
                 if os.path.exists(self.pidfile):
                     os.remove(self.pidfile)
             else:
-                print str(err)
+                print(str(err))
                 sys.exit(1)
 
     def restart(self):
