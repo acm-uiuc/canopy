@@ -24,29 +24,28 @@ class CanopyClient(daemon.Daemon):
     def __init__(self, pidfile):
         """Creates a Canopy client based on client-config.yml file"""
         daemon.Daemon.__init__(self, pidfile, stderr='/tmp/canopyclient.log')
+
+        # Load addresses from config
+        self.addr = (config["host"], config["port"])
         self.parent_addr = (config["parent_host"], config["parent_port"])
-        self.cmd_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.cmd_thread = threading.Thread(target=CommandThread, args=(self.cmd_s,))
-        self.hb_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.hb_thread = threading.Thread(target=HeartbeatThread, args=(self.hb_s, self.cmd_s,))
 
 
     def run(self):
         """Begin sending messages to canopy server and launch threads"""
-        global target_buffer
+        #global target_buffer
 
+        # Begin listening for heartbeats
+        self.cmd_s = socketserver.ThreadingTCPServer(self.addr, HeartbeatTCPHandler)
+        self.cmd_thread = threading.Thread(target=self.cmd_s.serve_forever)
+        self.cmd_thread.start()
+        cprint("\033[92mcanopy command socket listening at (%s, %d)\033[0m\n" % self.addr)
+
+        # Begin transmitting heartbeats
+        self.hb_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.hb_s.connect(self.parent_addr)
-        self.cmd_s.connect(self.parent_addr)
-        cprint("\033[92mcanopy client connected to (%s, %d)\n    local: hb:(%s, %d) cmd:(%s, %d)\033[0m\n" % (self.parent_addr[0], self.parent_addr[1], self.hb_s.getsockname()[0], self.hb_s.getsockname()[1], self.cmd_s.getsockname()[0], self.cmd_s.getsockname()[1]))
+        self.hb_thread = threading.Thread(target=HeartbeatThread, args=(self.hb_s,))
         self.hb_thread.start()
-
-        # launch tcp server if relay node
-        if not config["is_leaf"]:
-            self.addr = (config["host"], config["port"])
-            self.ss = socketserver.ThreadingTCPServer(self.addr, CanopyTCPHandler)
-            self.s_thread = threading.Thread(target=self.ss.serve_forever)
-            self.s_thread.start()
-            cprint("canopy server listening at (%s, %d)" % self.addr)
+        cprint("\033[92mcanopy client connected to (%s, %d)\033[0m\n" % self.parent_addr)
 
         # launch target process if leaf node
         if config["target"] is not None:
@@ -59,70 +58,91 @@ class CanopyClient(daemon.Daemon):
                 if target_buffer.qsize() >= config["bufsize"]:
                     target_buffer.get()
                 target_buffer.put(output)
+            cprint("\033[95mTarget process terminated.\033[0m\n")
+
             # once process ends, store last BUFSIZE lines 
             for line in proc.stdout:
                 if target_buffer.qsize() >= config["bufsize"]:
                     target_buffer.get()
                 target_buffer.put(line.decode())
-            while not target_buffer.empty():
-                cprint(target_buffer.get())
 
 
-class CanopyTCPHandler(socketserver.StreamRequestHandler):
+class HeartbeatTCPHandler(socketserver.StreamRequestHandler):
     """Handle connections and maintain set of live clients"""
-
-    client_services = set()
-
-    # associate services with client command port
-    command_addr = None
 
     def handle(self):
         cprint("\033[92mnew connection: (%s, %d)\033[0m" % self.client_address)
         self.request.settimeout(config["timeout"])
+
+        # maintain set of services on client
+        client_services = set()
+
+        # receive and initialize socket on command port
+        while True:
+            try:
+                command_addr = self.request.recv(1024).strip().decode().split(":")
+                command_addr[1] = int(command_addr[1])
+                self.request.sendall(b"ACK")
+                break
+            except ValueError: self.request.sendall(b"NACK")
+        cprint("    set command addr: %s" % command_addr)
+
         while True:
             # self.request is the TCP socket connected to the client
-            self.data = self.request.recv(1024).strip()
-            cprint("    ping: %s" % self.data)
-
-            # first packet is command port
-            if self.command_addr is None:
-                self.command_addr = self.data
-                cprint("    set command addr: %s" % self.command_addr)
-                continue
+            data = self.request.recv(1024).strip()
+            cprint("    ping: %s" % data)
 
             # request terminated or timed out
-            if self.data == b"":
+            if data == b"":
                 break
 
             # update list of live services
             new_client_services = set()
-            for service in self.data.split(b" "):
+            for service in data.split(b" "):
                 if service is not b"DORMANT_RELAY":
                     new_client_services.add(service)
 
             # new connections
-            for new_serv in new_client_services - self.client_services:
-                connections[new_serv] = self.client_address
-                self.client_services.add(new_serv)
+            for new_serv in new_client_services - client_services:
+                connections[new_serv] = command_addr
+                client_services.add(new_serv)
 
             # broken connections
-            for broken_serv in self.client_services - new_client_services:
+            for broken_serv in client_services - new_client_services:
                 del connections[broken_serv]
-                self.client_services.remove(broken_serv)
-            
+                client_services.remove(broken_serv)
+ 
         cprint("\033[93mend connection: (%s, %d)\033[0m\n" % self.client_address)
-        
+
         # remove client from live connections
         for serv in self.client_services:
             del connections[serv] 
 
 
-def HeartbeatThread(socket, cmd_socket):
+class CommandTCPHandler(socketserver.StreamRequestHandler):
+    """Listen for commands from canopy server"""
+
+    def handle(self):
+        if self.client_address != (config["parent_host"], config["parent_port"]):
+            return
+
+        cprint("\033[92mcommand socket connected.\033[0m")
+        while True:
+            # self.request is the TCP socket connected to the client
+            data = self.request.recv(1024).strip()
+            cprint("    ping: %s" % data)
+
+
+def HeartbeatThread(socket):
     """Sends data to server on existing TCP socket"""
 
     try:
-        # transmit command socket address
-        socket.sendall(("%s:%d" % cmd_socket.getsockname()).encode('utf-8'))
+        # transmit command socket address and wait for ack
+        while True:
+            addr = (config["host"], config["port"])
+            socket.sendall(("%s:%d" % addr).encode('utf-8'))
+            answer = socket.recv(1024).strip()
+            if answer == b"ACK": break
 
         while True:
             if not config["is_leaf"] and len(connections) > 0:
@@ -131,24 +151,11 @@ def HeartbeatThread(socket, cmd_socket):
                 socket.sendall(config["DORMANT_RELAY"])
             else:
                 cprint("Transmitting %s\n" % config["app_name"])
-                socket.sendall(config["app_name"])
+                socket.sendall(config["app_name"].encode('utf-8'))
             time.sleep(config["hb_interval"])
     except:
         cprint(str(sys.exc_info()[1]))
         socket.shutdown()
-        cprint("\033[93mcanopy client detached from server.\033[0m\n")
-
-
-def CommandThread(socket):
-    """Listens and relays commands on existing TCP socket"""
-
-    # transmit 
-
-    try:
-        while True:
-            socket.recv(1024).decode()
-             
-    except:
         cprint("\033[93mcanopy client detached from server.\033[0m\n")
 
 

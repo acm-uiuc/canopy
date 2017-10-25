@@ -4,6 +4,10 @@
 host: "0.0.0.0"
 port: 50007
 
+# ipv4 address of web interface
+web_host: "0.0.0.0"
+web_port: 8004
+
 # maximum time between heartbeats
 timeout: 5
 
