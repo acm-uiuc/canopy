@@ -1,14 +1,37 @@
 # Central configuration file for Canopy client instances
 
 # ipv4 address of parent node
-host: "0.0.0.0"
-port: 50007
+parent_host: "0.0.0.0"
+parent_port: 50007
 
-# reporting settings, in seconds
-timeout: 1 
+# ipv4 address of tcp heartbeat server
+hb_host: "0.0.0.0"
+hb_port: 50010
+
+# ipv4 address of tcp command server
+cmd_host: "0.0.0.0"
+cmd_port: 50011
+
+# name of application monitored by node
+app_name: "dummy-app-name"
+
+# reporting settings, in seconds.
+# must be less than timeout value on parent
+hb_interval: 3 
+
+# maximum time between heartbeats
+# used only when is_leaf is false
+timeout: 5
 
 # prints connections to stdout
 silent: false
 
 # whether this client is a leaf node
-is_leaf: true 
+is_leaf: true
+
+# process to be launched and monitored by this node
+# set this value to NULL if this is a relay node
+target: "./canopy_test"
+
+# size of target process stdout and stderr output buffer
+bufsize: 10
